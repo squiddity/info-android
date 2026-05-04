@@ -20,7 +20,7 @@ Or build from CLI with the checked-in Gradle wrapper:
 ```
 
 > Android Gradle Plugin requires **Java 17+**. If your default `java -version` is lower,
-> set your system default JDK to 17+ before building (for Arch/Manjaro: `sudo archlinux-java set java-17-openjdk`).
+> configure your shell/IDE to use a Java 17+ JDK before building.
 
 ## SDK + emulator setup (automation-friendly)
 
