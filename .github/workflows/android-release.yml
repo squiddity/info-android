@@ -26,24 +26,42 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build release APK
+      - name: Decode signing keystore
+        env:
+          SIGNING_KEYSTORE_B64: ${{ secrets.SIGNING_KEYSTORE_B64 }}
+        run: |
+          test -n "$SIGNING_KEYSTORE_B64"
+          echo "$SIGNING_KEYSTORE_B64" | base64 -d > /tmp/signing-keystore.jks
+
+      - name: Build signed release APK
+        env:
+          SIGNING_STORE_FILE: /tmp/signing-keystore.jks
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
         run: ./gradlew :app:assembleRelease
 
-      - name: List generated APKs
-        run: ls -lah app/build/outputs/apk/release || true
+      - name: Ensure signed APK exists
+        run: |
+          ls -lah app/build/outputs/apk/release
+          test -f app/build/outputs/apk/release/app-release.apk
+
+      - name: Verify APK signature
+        run: |
+          $ANDROID_HOME/build-tools/34.0.0/apksigner verify -v app/build/outputs/apk/release/app-release.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-release-apk
-          path: app/build/outputs/apk/release/*.apk
+          path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
 
       - name: Publish GitHub Release (tag pushes)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/outputs/apk/release/*.apk
+          files: app/build/outputs/apk/release/app-release.apk
           generate_release_notes: true
 
       - name: Publish GitHub Prerelease (manual runs)
@@ -54,4 +72,4 @@ jobs:
           name: Manual build ${{ github.run_number }}
           prerelease: true
           generate_release_notes: true
-          files: app/build/outputs/apk/release/*.apk
+          files: app/build/outputs/apk/release/app-release.apk
