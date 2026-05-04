@@ -15,6 +15,8 @@ import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
 
+    private var lastModeRequestStatus: String? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -34,14 +36,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestDisplayMode(modeId: Int) {
+        val beforeModeId = windowManager.defaultDisplay.mode.modeId
         val params = window.attributes
         params.preferredDisplayModeId = modeId
         window.attributes = params
         Toast.makeText(this, "Requested modeId=$modeId", Toast.LENGTH_SHORT).show()
 
         window.decorView.postDelayed({
+            val afterModeId = windowManager.defaultDisplay.mode.modeId
+            lastModeRequestStatus = if (afterModeId == modeId) {
+                "Applied requested modeId=$modeId"
+            } else {
+                "Not applied. Before=$beforeModeId, now=$afterModeId, requested=$modeId"
+            }
             refreshUi()
-        }, 700)
+        }, 900)
     }
 
     private fun buildRows(): List<Row> {
@@ -59,6 +68,9 @@ class MainActivity : AppCompatActivity() {
             title = formatMode(d.mode),
             subtitle = "Active display mode"
         )
+        lastModeRequestStatus?.let {
+            rows += Row.Item("Mode switch result", it)
+        }
 
         rows += Row.Section("Resolution → refresh rates")
         modes.groupBy {
