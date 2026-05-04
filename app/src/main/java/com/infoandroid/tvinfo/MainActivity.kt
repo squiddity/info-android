@@ -7,6 +7,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -21,9 +22,26 @@ class MainActivity : AppCompatActivity() {
         val subtitle = findViewById<TextView>(R.id.headerSubtitle)
         subtitle.text = "${Build.MANUFACTURER} ${Build.MODEL} • Android ${Build.VERSION.RELEASE}"
 
+        refreshUi()
+    }
+
+    private fun refreshUi() {
         val recycler = findViewById<RecyclerView>(R.id.recyclerView)
         recycler.layoutManager = LinearLayoutManager(this)
-        recycler.adapter = DisplayReportAdapter(buildRows())
+        recycler.adapter = DisplayReportAdapter(buildRows()) { modeId ->
+            requestDisplayMode(modeId)
+        }
+    }
+
+    private fun requestDisplayMode(modeId: Int) {
+        val params = window.attributes
+        params.preferredDisplayModeId = modeId
+        window.attributes = params
+        Toast.makeText(this, "Requested modeId=$modeId", Toast.LENGTH_SHORT).show()
+
+        window.decorView.postDelayed({
+            refreshUi()
+        }, 700)
     }
 
     private fun buildRows(): List<Row> {
@@ -57,9 +75,10 @@ class MainActivity : AppCompatActivity() {
 
         rows += Row.Section("All supported modes (${modes.size})")
         modes.forEach { mode ->
-            rows += Row.Item(
+            rows += Row.ModeItem(
                 title = formatMode(mode),
-                subtitle = "modeId=${mode.modeId}"
+                subtitle = "modeId=${mode.modeId}  •  Click to request this mode",
+                modeId = mode.modeId
             )
         }
 
@@ -91,10 +110,13 @@ class MainActivity : AppCompatActivity() {
 private sealed class Row {
     data class Section(val text: String) : Row()
     data class Item(val title: String, val subtitle: String) : Row()
+    data class ModeItem(val title: String, val subtitle: String, val modeId: Int) : Row()
 }
 
-private class DisplayReportAdapter(private val rows: List<Row>) :
-    RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+private class DisplayReportAdapter(
+    private val rows: List<Row>,
+    private val onModeRequested: (Int) -> Unit
+) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     companion object {
         private const val TYPE_SECTION = 0
@@ -104,7 +126,7 @@ private class DisplayReportAdapter(private val rows: List<Row>) :
     override fun getItemViewType(position: Int): Int {
         return when (rows[position]) {
             is Row.Section -> TYPE_SECTION
-            is Row.Item -> TYPE_ITEM
+            is Row.Item, is Row.ModeItem -> TYPE_ITEM
         }
     }
 
@@ -120,7 +142,10 @@ private class DisplayReportAdapter(private val rows: List<Row>) :
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when (val row = rows[position]) {
             is Row.Section -> (holder as SectionVH).bind(row)
-            is Row.Item -> (holder as ItemVH).bind(row)
+            is Row.Item -> (holder as ItemVH).bind(row.title, row.subtitle, null)
+            is Row.ModeItem -> (holder as ItemVH).bind(row.title, row.subtitle) {
+                onModeRequested(row.modeId)
+            }
         }
     }
 
@@ -136,9 +161,13 @@ private class DisplayReportAdapter(private val rows: List<Row>) :
     private class ItemVH(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val title = itemView.findViewById<TextView>(R.id.title)
         private val subtitle = itemView.findViewById<TextView>(R.id.subtitle)
-        fun bind(row: Row.Item) {
-            title.text = row.title
-            subtitle.text = row.subtitle
+
+        fun bind(titleText: String, subtitleText: String, onClick: (() -> Unit)?) {
+            title.text = titleText
+            subtitle.text = subtitleText
+            itemView.setOnClickListener {
+                onClick?.invoke()
+            }
         }
     }
 }
