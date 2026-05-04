@@ -16,11 +16,11 @@ Open in Android Studio (Giraffe+ / AGP 8.x) and run on an Android TV device or e
 Or build from CLI with the checked-in Gradle wrapper:
 
 ```bash
-# Use JDK 17 for Gradle/AGP builds
-export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
-export PATH="$JAVA_HOME/bin:$PATH"
 ./gradlew :app:assembleRelease
 ```
+
+> Android Gradle Plugin requires **Java 17+**. If your default `java -version` is lower,
+> set your system default JDK to 17+ before building (for Arch/Manjaro: `sudo archlinux-java set java-17-openjdk`).
 
 ## SDK + emulator setup (automation-friendly)
 
