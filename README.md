@@ -21,6 +21,21 @@ Or build from CLI with the checked-in Gradle wrapper:
 
 > Android Gradle Plugin requires **Java 17+**. If your default `java -version` is lower,
 > configure your shell/IDE to use a Java 17+ JDK before building.
+>
+> Automation-friendly approach (no system changes): detect installed JDKs, pick a 17+ home,
+> and set environment vars per command:
+>
+> ```bash
+> # Optional helper on Arch-based systems:
+> archlinux-java status || true
+>
+> # Example per-command override
+> export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+> export PATH="$JAVA_HOME/bin:$PATH"
+> ./gradlew :app:assembleRelease
+> ```
+>
+> Any Java 17+ path works; using env overrides keeps setup local to the session/command.
 
 ## SDK + emulator setup (automation-friendly)
 
