@@ -24,6 +24,12 @@
         android:textSize="14sp"
         android:paddingBottom="16dp" />
 
+    <SurfaceView
+        android:id="@+id/frameRateSurface"
+        android:layout_width="1dp"
+        android:layout_height="1dp"
+        android:visibility="invisible" />
+
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerView"
         android:layout_width="match_parent"
