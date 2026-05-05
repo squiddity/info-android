@@ -1,5 +1,6 @@
 package com.infoandroid.tvinfo
 
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.view.Display
@@ -19,6 +20,7 @@ class MainActivity : AppCompatActivity() {
 
     private var lastModeRequestStatus: String? = null
     private var lastFrameRateRequestStatus: String? = null
+    private val probeLog = mutableListOf<String>()
     private lateinit var frameRateSurface: SurfaceView
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -38,7 +40,13 @@ class MainActivity : AppCompatActivity() {
         recycler.adapter = DisplayReportAdapter(
             rows = buildRows(),
             onModeRequested = { modeId -> requestDisplayMode(modeId) },
-            onFrameRateRequested = { fps -> requestFrameRate(fps) }
+            onFrameRateRequested = { fps -> requestFrameRate(fps) },
+            onActionRequested = { action ->
+                when (action) {
+                    ActionType.RUN_PROBE -> runProbeMatrix()
+                    ActionType.SHARE_REPORT -> shareProbeLog()
+                }
+            }
         )
     }
 
@@ -61,16 +69,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestFrameRate(targetFps: Float) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            lastFrameRateRequestStatus = "Not supported on this Android version (requires API 30+)"
+        requestFrameRateInternal(targetFps) { _, status ->
+            lastFrameRateRequestStatus = status
+            Toast.makeText(this, "Requested ${roundHz(targetFps)} Hz", Toast.LENGTH_SHORT).show()
             refreshUi()
+        }
+    }
+
+    private fun requestFrameRateInternal(targetFps: Float, onDone: (Boolean, String) -> Unit) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            onDone(false, "Not supported on this Android version (requires API 30+)")
             return
         }
 
         val beforeMode = windowManager.defaultDisplay.mode
         if (!frameRateSurface.holder.surface.isValid) {
-            lastFrameRateRequestStatus = "Surface not ready for frame-rate request"
-            refreshUi()
+            onDone(false, "Surface not ready for frame-rate request")
             return
         }
 
@@ -89,18 +103,87 @@ class MainActivity : AppCompatActivity() {
             "Surface.setFrameRate(fps, FIXED_SOURCE)"
         }
 
-        Toast.makeText(this, "Requested ${roundHz(targetFps)} Hz", Toast.LENGTH_SHORT).show()
-
         window.decorView.postDelayed({
             val afterMode = windowManager.defaultDisplay.mode
             val applied = Math.abs(afterMode.refreshRate - targetFps) < 1.5f
-            lastFrameRateRequestStatus = if (applied) {
+            val status = if (applied) {
                 "Applied ${roundHz(targetFps)} Hz (${formatMode(afterMode)}) via $apiUsed"
             } else {
                 "Not exact. requested=${roundHz(targetFps)} Hz, before=${formatMode(beforeMode)}, now=${formatMode(afterMode)} via $apiUsed"
             }
-            refreshUi()
+            onDone(applied, status)
         }, 1200)
+    }
+
+    private fun runProbeMatrix() {
+        val targets = listOf(
+            Triple(1920, 1080, 60f),
+            Triple(1920, 1080, 120f),
+            Triple(2560, 1440, 60f),
+            Triple(2560, 1440, 120f),
+            Triple(3840, 2160, 60f),
+            Triple(3840, 2160, 120f)
+        )
+
+        probeLog.clear()
+        probeLog += "Probe started on ${Build.MANUFACTURER} ${Build.MODEL}"
+
+        fun step(index: Int) {
+            if (index >= targets.size) {
+                lastFrameRateRequestStatus = "Probe complete (${targets.size} tests)"
+                refreshUi()
+                return
+            }
+
+            val (w, h, fps) = targets[index]
+            val display = windowManager.defaultDisplay
+            val modes = display.supportedModes
+            val before = display.mode
+
+            val normalizedW = maxOf(w, h)
+            val normalizedH = minOf(w, h)
+            val exactMode = modes.firstOrNull {
+                maxOf(it.physicalWidth, it.physicalHeight) == normalizedW &&
+                        minOf(it.physicalWidth, it.physicalHeight) == normalizedH &&
+                        Math.abs(it.refreshRate - fps) < 1.5f
+            }
+            val resMode = modes.firstOrNull {
+                maxOf(it.physicalWidth, it.physicalHeight) == normalizedW &&
+                        minOf(it.physicalWidth, it.physicalHeight) == normalizedH
+            }
+
+            val chosenMode = exactMode ?: resMode
+            if (chosenMode != null) {
+                val params = window.attributes
+                params.preferredDisplayModeId = chosenMode.modeId
+                window.attributes = params
+            }
+
+            requestFrameRateInternal(fps) { _, _ ->
+                val after = windowManager.defaultDisplay.mode
+                val modeApplied = chosenMode != null && after.modeId == chosenMode.modeId
+                val fpsApplied = Math.abs(after.refreshRate - fps) < 1.5f
+                val line = "${normalizedW}x${normalizedH}@${roundHz(fps)} -> " +
+                        "modeRequest=" + (chosenMode?.modeId?.toString() ?: "none") +
+                        ", before=${formatMode(before)}, after=${formatMode(after)}, " +
+                        "modeApplied=$modeApplied, fpsApplied=$fpsApplied"
+                probeLog += line
+                lastFrameRateRequestStatus = line
+                refreshUi()
+                window.decorView.postDelayed({ step(index + 1) }, 500)
+            }
+        }
+
+        step(0)
+    }
+
+    private fun shareProbeLog() {
+        val text = if (probeLog.isEmpty()) "No probe results yet" else probeLog.joinToString("\n")
+        startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "info-android probe report")
+            putExtra(Intent.EXTRA_TEXT, text)
+        }, "Share probe report"))
     }
 
     private fun buildRows(): List<Row> {
@@ -133,6 +216,13 @@ class MainActivity : AppCompatActivity() {
                 subtitle = "Use modern frame-rate API and verify actual mode",
                 fps = fps
             )
+        }
+
+        rows += Row.Section("Phase B probes")
+        rows += Row.ActionItem("Run probe matrix", "Test 1080p/1440p/4K at 60/120 and log results", ActionType.RUN_PROBE)
+        rows += Row.ActionItem("Share probe report", "Share collected probe diagnostics", ActionType.SHARE_REPORT)
+        if (probeLog.isNotEmpty()) {
+            rows += Row.Item("Latest probe", probeLog.last())
         }
 
         rows += Row.Section("Resolution → refresh rates")
@@ -182,17 +272,21 @@ class MainActivity : AppCompatActivity() {
     private fun roundHz(rate: Float): String = String.format(Locale.US, "%.2f", rate)
 }
 
+private enum class ActionType { RUN_PROBE, SHARE_REPORT }
+
 private sealed class Row {
     data class Section(val text: String) : Row()
     data class Item(val title: String, val subtitle: String) : Row()
     data class ModeItem(val title: String, val subtitle: String, val modeId: Int) : Row()
     data class FrameRateItem(val title: String, val subtitle: String, val fps: Float) : Row()
+    data class ActionItem(val title: String, val subtitle: String, val action: ActionType) : Row()
 }
 
 private class DisplayReportAdapter(
     private val rows: List<Row>,
     private val onModeRequested: (Int) -> Unit,
-    private val onFrameRateRequested: (Float) -> Unit
+    private val onFrameRateRequested: (Float) -> Unit,
+    private val onActionRequested: (ActionType) -> Unit
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     companion object {
@@ -203,7 +297,7 @@ private class DisplayReportAdapter(
     override fun getItemViewType(position: Int): Int {
         return when (rows[position]) {
             is Row.Section -> TYPE_SECTION
-            is Row.Item, is Row.ModeItem, is Row.FrameRateItem -> TYPE_ITEM
+            is Row.Item, is Row.ModeItem, is Row.FrameRateItem, is Row.ActionItem -> TYPE_ITEM
         }
     }
 
@@ -225,6 +319,9 @@ private class DisplayReportAdapter(
             }
             is Row.FrameRateItem -> (holder as ItemVH).bind(row.title, row.subtitle) {
                 onFrameRateRequested(row.fps)
+            }
+            is Row.ActionItem -> (holder as ItemVH).bind(row.title, row.subtitle) {
+                onActionRequested(row.action)
             }
         }
     }
