@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.view.Display
 import android.view.LayoutInflater
 import android.view.Surface
+import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.View
 import android.view.ViewGroup
@@ -16,12 +17,13 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import java.util.Locale
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
 
     private var lastModeRequestStatus: String? = null
     private var lastFrameRateRequestStatus: String? = null
     private val probeLog = mutableListOf<String>()
     private lateinit var frameRateSurface: SurfaceView
+    private var frameRateSurfaceReady: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -30,6 +32,7 @@ class MainActivity : AppCompatActivity() {
         val subtitle = findViewById<TextView>(R.id.headerSubtitle)
         subtitle.text = "${Build.MANUFACTURER} ${Build.MODEL} • Android ${Build.VERSION.RELEASE}"
         frameRateSurface = findViewById(R.id.frameRateSurface)
+        frameRateSurface.holder.addCallback(this)
 
         refreshUi()
     }
@@ -83,8 +86,17 @@ class MainActivity : AppCompatActivity() {
         }
 
         val beforeMode = windowManager.defaultDisplay.mode
-        if (!frameRateSurface.holder.surface.isValid) {
-            onDone(false, "Surface not ready for frame-rate request")
+        if (!frameRateSurfaceReady || !frameRateSurface.holder.surface.isValid) {
+            onDone(false, "Surface not ready for frame-rate request (wait 1-2s after launch)")
+            return
+        }
+
+        // Ensure the app has produced at least one frame on this surface
+        frameRateSurface.holder.lockCanvas()?.let { canvas ->
+            canvas.drawColor(android.graphics.Color.BLACK)
+            frameRateSurface.holder.unlockCanvasAndPost(canvas)
+        } ?: run {
+            onDone(false, "Surface lockCanvas failed; surface may not be initialized yet")
             return
         }
 
@@ -201,6 +213,10 @@ class MainActivity : AppCompatActivity() {
             title = formatMode(d.mode),
             subtitle = "Active display mode"
         )
+        rows += Row.Item(
+            title = "Frame-rate surface",
+            subtitle = if (frameRateSurfaceReady) "Ready" else "Not ready yet"
+        )
         lastModeRequestStatus?.let {
             rows += Row.Item("Mode switch result", it)
         }
@@ -270,6 +286,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun roundHz(rate: Float): String = String.format(Locale.US, "%.2f", rate)
+
+    override fun surfaceCreated(holder: SurfaceHolder) {
+        frameRateSurfaceReady = true
+        refreshUi()
+    }
+
+    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+        frameRateSurfaceReady = true
+    }
+
+    override fun surfaceDestroyed(holder: SurfaceHolder) {
+        frameRateSurfaceReady = false
+    }
 }
 
 private enum class ActionType { RUN_PROBE, SHARE_REPORT }
