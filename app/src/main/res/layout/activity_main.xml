@@ -26,9 +26,11 @@
 
     <SurfaceView
         android:id="@+id/frameRateSurface"
-        android:layout_width="1dp"
-        android:layout_height="1dp"
-        android:visibility="invisible" />
+        android:layout_width="64dp"
+        android:layout_height="36dp"
+        android:alpha="0.01"
+        android:clickable="false"
+        android:focusable="false" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerView"

@@ -5,6 +5,8 @@ import android.os.Build
 import android.os.Bundle
 import android.view.Display
 import android.view.LayoutInflater
+import android.graphics.PixelFormat
+import android.util.Log
 import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.SurfaceView
@@ -32,6 +34,8 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         val subtitle = findViewById<TextView>(R.id.headerSubtitle)
         subtitle.text = "${Build.MANUFACTURER} ${Build.MODEL} • Android ${Build.VERSION.RELEASE}"
         frameRateSurface = findViewById(R.id.frameRateSurface)
+        frameRateSurface.setZOrderOnTop(true)
+        frameRateSurface.holder.setFormat(PixelFormat.TRANSLUCENT)
         frameRateSurface.holder.addCallback(this)
 
         refreshUi()
@@ -289,15 +293,18 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
 
     override fun surfaceCreated(holder: SurfaceHolder) {
         frameRateSurfaceReady = true
+        Log.i("InfoAndroidTv", "frameRateSurface created")
         refreshUi()
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
         frameRateSurfaceReady = true
+        Log.i("InfoAndroidTv", "frameRateSurface changed: ${width}x$height format=$format")
     }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
         frameRateSurfaceReady = false
+        Log.i("InfoAndroidTv", "frameRateSurface destroyed")
     }
 }
 
